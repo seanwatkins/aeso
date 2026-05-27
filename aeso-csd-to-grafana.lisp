@@ -338,6 +338,38 @@
 ;;; 5.  Fetch AESO CSD data
 ;;; ──────────────────────────────────────────────────────────────────
 
+;;; usocket caches NAME-SERVICE-ERROR for the process lifetime after the first
+;;; DNS failure. The workaround is to retry with a short sleep — the underlying
+;;; C resolver gets a fresh attempt each call and usually succeeds on retry.
+(defparameter *dns-retry-attempts* 3
+  "Number of times to retry a fetch function on DNS failure before giving up.")
+
+(defparameter *dns-retry-delay* 5
+  "Seconds to wait between DNS retry attempts.")
+
+(defun with-dns-retry (fetch-fn label)
+  "Call FETCH-FN up to *DNS-RETRY-ATTEMPTS* times, retrying on NAME-SERVICE-ERROR.
+   Returns the result of FETCH-FN or NIL if all attempts fail."
+  (loop for attempt from 1 to *dns-retry-attempts*
+        do (handler-case
+               (let ((result (funcall fetch-fn)))
+                 (return result))
+             (usocket:ns-error (e)
+               (format t "~&[WARN] ~A DNS failure (attempt ~A/~A): ~A~%"
+                       label attempt *dns-retry-attempts* e)
+               (if (< attempt *dns-retry-attempts*)
+                   (progn
+                     (format t "~&[INFO] Retrying in ~As...~%" *dns-retry-delay*)
+                     (sleep *dns-retry-delay*))
+                   (progn
+                     (format t "~&[ERROR] ~A DNS failed after ~A attempts. Will retry next poll.~%"
+                             label *dns-retry-attempts*)
+                     (mqtt-publish-error
+                       (format nil "~A_dns_failure" label)
+                       (format nil "~A" e))
+                     (return nil)))))
+        finally (return nil)))
+
 ;;; OpenSSL 3.x strictly requires a TLS close_notify alert on shutdown.
 ;;; Azure API Management drops the TCP connection without sending one, which
 ;;; causes error:0A000126 (SSL-ERROR-SSL / unexpected eof while reading).
@@ -595,7 +627,7 @@
         (last-smp nil))   ; holds the SMP value for MQTT
 
     ;; ── CSD asset generation ────────────────────────────────────────
-    (let ((json (fetch-csd)))
+    (let ((json (with-dns-retry #'fetch-csd "csd")))
       (if json
           (let ((lines (json->line-protocol json ts-ns)))
             (if lines
@@ -608,7 +640,7 @@
             (mqtt-publish-error "csd_fetch_failed" "AESO CSD API returned no data"))))
 
     ;; ── Pool price / SMP ────────────────────────────────────────────
-    (let ((json (fetch-smp)))
+    (let ((json (with-dns-retry #'fetch-smp "smp")))
       (if json
           (let ((lines (smp->line-protocol json ts-ns)))
             (if lines

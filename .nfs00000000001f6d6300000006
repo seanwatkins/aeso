@@ -1,33 +1,20 @@
 ;;;; aeso-csd-to-grafana.lisp
 ;;;;
-;;;; This code was written by Claude (https://claude.ai), Anthropic's AI assistant,
-;;;; through an iterative conversation with a human operator who provided requirements,
-;;;; tested each change against live systems, and guided development through real error
-;;;; output and debugging sessions. Every bug fix, API path discovery, SSL workaround,
-;;;; and MQTT implementation was developed collaboratively — the human ran the code,
-;;;; the AI wrote it.
-;;;;
-;;;; Fetches the AESO Current Supply & Demand (CSD) and System Marginal Price (SMP)
-;;;; APIs every 60 seconds and writes metrics to InfluxDB (Grafana time-series backend).
+;;;; Fetches the AESO Current Supply & Demand (CSD) API and writes
+;;;; metrics to InfluxDB (the most common Grafana time-series backend).
 ;;;; Also publishes MQTT notifications on startup, each poll, and on failure.
-;;;;
-;;;; AESO endpoints:
-;;;;   CSD: https://apimgw.aeso.ca/public/currentsupplydemand-api/v1/csd/generation/assets/current
-;;;;   SMP: https://apimgw.aeso.ca/public/systemmarginalprice-api/v1.1/price/systemMarginalPrice/current
 ;;;;
 ;;;; Dependencies (Quicklisp):
 ;;;;   dexador    – HTTP client
 ;;;;   yason      – JSON parser
 ;;;;   local-time – Timestamp handling / UTC conversion
-;;;;   usocket    – TCP sockets (MQTT + DNS error handling)
-;;;;   cl+ssl     – TLS for AESO APIM (Azure APIM close_notify workaround)
-;;;;   babel      – UTF-8 encoding for MQTT packets
+;;;;   usocket    – TCP sockets (used for MQTT and DNS error handling)
+;;;;   cl+ssl     – TLS for AESO APIM
 ;;;;
 ;;;; Usage:
 ;;;;   sbcl --load aeso-csd-to-grafana.lisp
 ;;;;
-;;;; All configuration is via environment variables or defparameter forms.
-;;;; See README.md for full documentation.
+;;;; The program can also be run as a polling loop; see *POLL-INTERVAL-SECONDS*.
 
 ;;; ──────────────────────────────────────────────────────────────────
 ;;; 1.  Bootstrap Quicklisp (edit path if your ql install differs)

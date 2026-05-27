@@ -1,0 +1,62 @@
+# aeso-collector.service
+#
+# This systemd service file was written by Claude (https://claude.ai),
+# Anthropic's AI assistant, through an iterative conversation with a human
+# operator — the human ran the code, the AI wrote it.
+#
+# Runs the AESO CSD + SMP → InfluxDB/Grafana collector as a system service.
+#
+# Installation:
+#   sudo cp aeso-collector.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now aeso-collector
+#
+# Logs:
+#   sudo journalctl -u aeso-collector -f
+#
+# Status:
+#   sudo systemctl status aeso-collector
+
+[Unit]
+Description=AESO CSD + SMP → InfluxDB/Grafana Collector
+Documentation=https://developer-apim.aeso.ca/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=nobody
+Group=nogroup
+
+# ── AESO API ────────────────────────────────────────────────────────
+Environment="AESO_API_KEY=your-aeso-api-key"
+
+# ── InfluxDB ────────────────────────────────────────────────────────
+Environment="INFLUX_URL=http://localhost:8086"
+Environment="INFLUX_ORG=my-org"
+Environment="INFLUX_BUCKET=aeso"
+Environment="INFLUX_TOKEN=your-influxdb-token"
+
+# ── MQTT broker ─────────────────────────────────────────────────────
+Environment="MQTT_HOST=your-mqtt-broker-ip"
+Environment="MQTT_PORT=1883"
+Environment="MQTT_USER=your-mqtt-username"
+Environment="MQTT_PASS=your-mqtt-password"
+
+# ── Run ─────────────────────────────────────────────────────────────
+ExecStart=/usr/bin/sbcl --load /opt/aeso/aeso-csd-to-grafana.lisp
+
+# Restart on failure with a 10 second delay
+Restart=on-failure
+RestartSec=10
+
+# Give SBCL + Quicklisp time to load on first start
+TimeoutStartSec=120
+
+# Log everything to journald
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aeso-collector
+
+[Install]
+WantedBy=multi-user.target

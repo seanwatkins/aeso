@@ -1,11 +1,17 @@
 ;;;; aeso-csd-to-grafana.lisp
 ;;;;
 ;;;; This code was written by Claude (https://claude.ai), Anthropic's AI assistant,
-;;;; through an iterative conversation with a human operator who provided requirements,
-;;;; tested each change against live systems, and guided development through real error
-;;;; output and debugging sessions. Every bug fix, API path discovery, SSL workaround,
-;;;; and MQTT implementation was developed collaboratively — the human ran the code,
-;;;; the AI wrote it.
+;;;; through an iterative conversation with:
+;;;;
+;;;;   Sean Watkins
+;;;;   sean.watkins@gmail.com
+;;;;   https://www.linkedin.com/in/sean-w-b981934/
+;;;;   https://www.strava.com/athletes/35611001
+;;;;
+;;;; Sean provided the requirements, tested each change against live systems, and guided
+;;;; development through real error output and debugging sessions. Every bug fix, API path
+;;;; discovery, SSL workaround, and MQTT implementation was developed collaboratively —
+;;;; Sean ran the code, the AI wrote it.
 ;;;;
 ;;;; Fetches the AESO Current Supply & Demand (CSD) and System Marginal Price (SMP)
 ;;;; APIs every 60 seconds and writes metrics to InfluxDB (Grafana time-series backend).
@@ -724,6 +730,10 @@
 ;;; 10. Entry point – poll or run once
 ;;; ──────────────────────────────────────────────────────────────────
 
+;;; Exit after this many consecutive poll failures — lets the shell restart loop take over
+(defparameter *max-consecutive-failures* 10
+  "Exit the process after this many consecutive failures so the shell restart loop can recover.")
+
 (defun main ()
   (format t "~&AESO CSD → InfluxDB/Grafana collector~%")
   (format t "~&  AESO endpoint : ~A~%" *aeso-csd-url*)
@@ -750,6 +760,12 @@
       (progn
         (loop
           (run-once)
+          ;; Exit if too many consecutive failures — shell restart loop will recover
+          (when (>= *consecutive-failures* *max-consecutive-failures*)
+            (format t "~&[ERROR] ~A consecutive failures — exiting for restart.~%"
+                    *consecutive-failures*)
+            (mqtt-publish-status "offline")
+            (sb-ext:exit :code 1))
           (format t "~&[INFO] Sleeping ~As...~%" *poll-interval-seconds*)
           (sleep *poll-interval-seconds*))
         (mqtt-publish-status "offline"))
